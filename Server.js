@@ -34,9 +34,10 @@ const apiRoutes = require('./Routes/sectionRoutes');
 const aiBot = require('./Routes/aiChatBot');
 const exportFile = require('./Routes/exportFiles');
 const aiAudioChat = require('./Routes/aiAudioChat');
-const sendOtp = require('./Routes/otpVerification')
-const storeDocument = require('./Routes/storeDocument')
-const logout = require('./Routes/logout')
+const sendOtp = require('./Routes/otpVerification');
+const storeDocument = require('./Routes/storeDocument');
+const logout = require('./Routes/logout');
+const storeKey = require('./Routes/openAiKeyRoutes');
 
 // Use routes
 app.use('/api', transcriptionRoutes);
@@ -47,6 +48,7 @@ app.use('/api', aiAudioChat);
 app.use('/api', sendOtp)
 app.use('/api', storeDocument)
 app.use('/api', logout);
+app.use('/api', storeKey);
 
 // Serve static files
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));

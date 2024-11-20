@@ -1,8 +1,22 @@
-// audioUtils.js
 const axios = require('axios');
 const FormData = require('form-data');
 const fs = require('fs');
 const path = require('path');
+
+// Helper to load the API key from the JSON file or environment variable
+const getApiKey = () => {
+    // Resolve the path relative to the current file
+    const keyFilePath = path.resolve(__dirname, '../Routes/updatekey.json');
+    if (fs.existsSync(keyFilePath)) {
+        const data = JSON.parse(fs.readFileSync(keyFilePath, 'utf-8'));
+        if (data.key) {
+            return data.key;
+        }
+        throw new Error('API key is missing .');
+    }
+    throw new Error(`API key file "${keyFilePath}" is missing or invalid.`);
+};
+
 
 async function transcribeAudio(filePath) {
     // First, verify the file exists and is readable
@@ -32,16 +46,18 @@ async function transcribeAudio(filePath) {
 
     try {
         console.log('Sending request to OpenAI Whisper API...');
+        const apiKey = getApiKey(); // Fetch API key dynamically
+        console.log('api jey',apiKey )
         const response = await axios.post(
             'https://api.openai.com/v1/audio/transcriptions',
             formData,
             {
                 headers: {
-                    'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
+                    'Authorization': `Bearer ${apiKey}`,
                     ...formData.getHeaders()
                 },
                 maxBodyLength: Infinity,
-                timeout: 30000 // 30 second timeout
+                timeout: 30000 
             }
         );
 
@@ -58,6 +74,7 @@ async function transcribeAudio(filePath) {
         fileStream.destroy();
     }
 }
+
 
 async function getChatCompletion(transcript, templateText = '') {
     try {
@@ -78,6 +95,7 @@ async function getChatCompletion(transcript, templateText = '') {
             }
         ];
 
+        const apiKey = getApiKey(); // Fetch API key dynamically
         const response = await axios.post(
             'https://api.openai.com/v1/chat/completions',
             {
@@ -91,7 +109,7 @@ async function getChatCompletion(transcript, templateText = '') {
             },
             {
                 headers: {
-                    'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
+                    'Authorization': `Bearer ${apiKey}`,
                     'Content-Type': 'application/json'
                 },
                 timeout: 30000
