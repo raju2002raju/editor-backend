@@ -1,115 +1,109 @@
+// routes/asrRoute.js
 const express = require('express');
 const multer = require('multer');
 const path = require('path');
+const fs = require('fs');
 const { transcribeAudio, getChatCompletion } = require('../utils/audio');
-const dotenv = require('dotenv');
-const cors = require('cors');
-const bodyParser = require('body-parser');
-
-dotenv.config();
-
-let transcriptions = [];
 
 const router = express.Router();
 
+// Ensure uploads directory exists
+const uploadsDir = path.join(__dirname, '../uploads');
+if (!fs.existsSync(uploadsDir)) {
+    fs.mkdirSync(uploadsDir, { recursive: true });
+}
+
 const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, 'uploads/');
-  },
-  filename: (req, file, cb) => {
-    const uniqueSuffix = `${Date.now()}-${Math.round(Math.random() * 1E9)}`;
-    cb(null, `audio-${uniqueSuffix}${path.extname(file.originalname)}`);
-  }
+    destination: (req, file, cb) => {
+        cb(null, uploadsDir);
+    },
+    filename: (req, file, cb) => {
+        const uniqueSuffix = `${Date.now()}-${Math.round(Math.random() * 1E9)}`;
+        cb(null, `audio-${uniqueSuffix}${path.extname(file.originalname)}`);
+    }
 });
 
-// Add file filter to accept only audio files
 const fileFilter = (req, file, cb) => {
-  // Accept audio files only
-  if (file.mimetype.startsWith('audio/')) {
-    cb(null, true);
-  } else {  
-    cb(new Error('Only audio files are allowed!'), false);
-  }
+    // Check MIME type and file extension
+    const allowedMimes = ['audio/wav', 'audio/wave', 'audio/x-wav', 'audio/webm'];
+    const allowedExts = ['.wav', '.webm'];
+    
+    if (allowedMimes.includes(file.mimetype) &&
+        allowedExts.includes(path.extname(file.originalname).toLowerCase())) {
+        cb(null, true);
+    } else {
+        cb(new Error('Invalid file type. Only WAV and WebM files are allowed.'), false);
+    }
 };
 
-const upload = multer({ 
-  storage: storage,
-  fileFilter: fileFilter,
-  limits: {
-    fileSize: 10 * 1024 * 1024 // 10MB limit
-  }
+const upload = multer({
+    storage,
+    fileFilter,
+    limits: {
+        fileSize: 25 * 1024 * 1024 // 25MB limit (Whisper API limit)
+    }
 });
 
 router.post('/asr', upload.single('audio'), async (req, res) => {
-  console.log('File received:', req.file);
-  console.log('Request body:', req.body); // Log the request body
+    console.log('Received ASR request');
+    const file = req.file;
+    
+    try {
+        if (!file) {
+            throw new Error('No audio file received');
+        }
 
-  try {
-    if (!req.file) {
-      throw new Error('No file uploaded');
+        console.log('Processing file:', file.path);
+        console.log('File details:', {
+            filename: file.filename,
+            mimetype: file.mimetype,
+            size: file.size
+        });
+
+        // Handle template text if provided
+        const templateText = req.body.templateText || '';
+        console.log('Template text:', templateText);
+
+        // Transcribe audio
+        const transcript = await transcribeAudio(file.path);
+        console.log('Transcription result:', transcript);
+
+        // Get chat completion
+        const chatResponse = await getChatCompletion(transcript, templateText);
+        console.log('Chat completion result:', chatResponse);
+
+        // Generate recording URL
+        const recordingUrl = `http://localhost:8080/uploads/${file.filename}`;
+
+        // Clean up the uploaded file
+        fs.unlink(file.path, (err) => {
+            if (err) console.error('Error deleting file:', err);
+        });
+
+        res.status(200).json({
+            success: true,
+            message: 'Audio processed successfully',
+            transcript,
+            chatResponse,
+            recordingUrl
+        });
+
+    } catch (error) {
+        console.error('Error processing audio:', error);
+        
+        // Clean up file if it exists
+        if (file && file.path) {
+            fs.unlink(file.path, (err) => {
+                if (err) console.error('Error deleting file:', err);
+            });
+        }
+
+        res.status(500).json({
+            success: false,
+            error: error.message,
+            details: process.env.NODE_ENV === 'development' ? error.stack : undefined
+        });
     }
-
-    const transcript = await transcribeAudio(req.file.path);
-    console.log('Transcription:', transcript);
-
-    // Make sure to access templateText correctly
-    const templateText = req.body.templateText; // This should now work
-    console.log('Template Text:', templateText);
-
-    const chatResponse = await getChatCompletion(transcript, templateText);
-    console.log('OpenAI Response:', chatResponse);
-
-    const recordingUrl = `http://localhost:8080/uploads/${req.file.filename}`;
-    console.log('Recording URL:', recordingUrl);
-
-    const transcription = {
-      id: Date.now(),
-      transcript,
-      filePath: req.file.filename,
-      contactId: req.body.contactId,
-      dateTime: req.body.dateTime || new Date().toISOString(),
-      recordingUrl,
-    };
-
-    transcriptions.push(transcription);
-
-    res.status(200).json({
-      message: 'File received, transcribed, and responded successfully',
-      transcript,
-      chatResponse,
-      recordingUrl,
-    });
-  } catch (error) {
-    console.error('Error:', error.message);
-    res.status(500).json({ 
-      error: 'Internal Server Error', 
-      details: error.message 
-    });
-  }
 });
-
-
-// Keep the rest of your routes the same
-router.get('/transcriptions', (req, res) => {
-  res.json({ contacts: transcriptions });
-});
-
-
-
-router.post('/section-content', async (req, res) =>  {
-  const {content} = req.body;
-  if (!content) {
-    return res.status(400).json({ error: 'Essay topic is required' });
-  }
-
-  try {
-    const correctedContent = await getChatCompletion(content);
-    res.json({ correctedContent });
-  } catch (error) {
-    console.error('Error during essay generation:', error);
-    res.status(500).json({ error: 'Unable to generate essay at this time. Please try again later.' });
-  }
-})
-
 
 module.exports = router;

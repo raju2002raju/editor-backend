@@ -30,7 +30,6 @@ async function fetchDocumentById(id) {
 router.get('/documents', async (req, res) => {
   try {
     const documents = await fetchAllDocuments();
-    console.log('Raw documents:', JSON.stringify(documents, null, 2));
     
     const formattedDocuments = documents.map(doc => ({
       _id: doc._id.toString(),

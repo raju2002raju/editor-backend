@@ -1,72 +1,37 @@
+// audioUtils.js
 const axios = require('axios');
 const FormData = require('form-data');
 const fs = require('fs');
-require('dotenv').config();
-
-// Main function to handle real-time audio processing
-async function handleRealtimeAudio(audioBlob) {
-    try {
-        // Save audio blob to temporary file
-        const tempFilePath = `temp-${Date.now()}.webm`;
-        await saveAudioToFile(audioBlob, tempFilePath);
-
-        // Process audio and get corrected transcript
-        const result = await processAudioFile(tempFilePath);
-
-        // Clean up temp file
-        fs.unlink(tempFilePath, (err) => {
-            if (err) console.error('Error deleting temp file:', err);
-        });
-
-        return result;
-    } catch (error) {
-        console.error('Error in handleRealtimeAudio:', error);
-        throw error;
-    }
-}
-
-// Save audio blob to file
-function saveAudioToFile(audioBlob, filePath) {
-    return new Promise((resolve, reject) => {
-        const fileStream = fs.createWriteStream(filePath);
-        fileStream.write(Buffer.from(audioBlob));
-        fileStream.end();
-        fileStream.on('finish', resolve);
-        fileStream.on('error', reject);
-    });
-}
-
-async function processAudioFile(filePath) {
-    try {
-        // Get initial transcription
-        const transcript = await transcribeAudio(filePath);
-        console.log('Initial transcription:', transcript);
-
-        // Get improved transcription
-        const correctedText = await getChatCompletion(transcript);
-        console.log('Corrected text:', correctedText);
-
-        return {
-            originalTranscript: transcript,
-            correctedText: correctedText,
-            success: true
-        };
-    } catch (error) {
-        console.error('Error processing audio:', error);
-        return {
-            error: error.message,
-            success: false
-        };
-    }
-}
+const path = require('path');
 
 async function transcribeAudio(filePath) {
+    // First, verify the file exists and is readable
+    if (!fs.existsSync(filePath)) {
+        throw new Error(`File not found: ${filePath}`);
+    }
+
+    // Verify file size
+    const stats = fs.statSync(filePath);
+    const fileSizeInMB = stats.size / (1024 * 1024);
+    if (fileSizeInMB > 25) { // Whisper API limit
+        throw new Error('File size exceeds 25MB limit');
+    }
+
     const formData = new FormData();
-    formData.append('file', fs.createReadStream(filePath));
+    
+    // Add file to form data with proper content type
+    const fileStream = fs.createReadStream(filePath);
+    formData.append('file', fileStream, {
+        filename: path.basename(filePath),
+        contentType: 'audio/wav' // Ensure proper content type
+    });
+    
     formData.append('model', 'whisper-1');
     formData.append('language', 'en');
+    formData.append('response_format', 'json');
 
     try {
+        console.log('Sending request to OpenAI Whisper API...');
         const response = await axios.post(
             'https://api.openai.com/v1/audio/transcriptions',
             formData,
@@ -74,34 +39,42 @@ async function transcribeAudio(filePath) {
                 headers: {
                     'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
                     ...formData.getHeaders()
-                }
+                },
+                maxBodyLength: Infinity,
+                timeout: 30000 // 30 second timeout
             }
         );
+
+        console.log('Transcription response:', response.data);
         return response.data.text;
     } catch (error) {
+        console.error('Transcription error details:', error.response?.data || error.message);
+        if (error.response?.status === 400) {
+            throw new Error('Invalid audio file format. Please ensure the file is WAV format with proper encoding.');
+        }
         throw new Error(`Transcription failed: ${error.message}`);
+    } finally {
+        // Clean up file stream
+        fileStream.destroy();
     }
 }
 
-async function getChatCompletion(transcript, templateText) {
+async function getChatCompletion(transcript, templateText = '') {
     try {
-        // Check if transcript or templateText is undefined
-        if (!transcript || !templateText) {
-            throw new Error('Missing transcript or template text');
+        if (!transcript) {
+            throw new Error('Missing transcript');
         }
 
-        console.log('Received:', transcript);
-        console.log('Template Text:', templateText);
-
-        // Create messages for the API
         const messages = [
             {
                 role: 'system',
-                content: `You are a specialized text formatter that combines spoken numbers with templates.`
+                content: `You are a legal document assistant. Your task is to format the following update in a clean, professional manner. 
+                         Return ONLY the formatted text without any additional commentary.
+                         ${templateText ? `Use this template as context: ${templateText}` : ''}`
             },
             {
                 role: 'user',
-                content: `Please update this template: "${templateText}" using this text: "${transcript}".`
+                content: transcript.trim()
             }
         ];
 
@@ -109,74 +82,44 @@ async function getChatCompletion(transcript, templateText) {
             'https://api.openai.com/v1/chat/completions',
             {
                 model: 'gpt-3.5-turbo',
-                messages: messages,
-                temperature: 0.1,
-                max_tokens: 100
+                messages,
+                temperature: 0.3,
+                max_tokens: 500,
+                top_p: 1,
+                frequency_penalty: 0,
+                presence_penalty: 0
             },
             {
                 headers: {
                     'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
                     'Content-Type': 'application/json'
-                }
+                },
+                timeout: 30000
             }
         );
 
-        console.log('OpenAI Response:', response.data); // Log the entire response for debugging
-
-        let correctedText = response.data.choices[0].message.content.trim();
-
-        // Basic validation
-        if (!correctedText) {
-            throw new Error('Empty response from API');
+        const formattedText = response.data?.choices?.[0]?.message?.content?.trim();
+        if (!formattedText) {
+            throw new Error('Invalid response from OpenAI API');
         }
 
         return {
             success: true,
-            originalTemplate: templateText,
             spokenText: transcript,
-            mergedText: correctedText
+            formattedText,
+            mergedText: formattedText
         };
-
     } catch (error) {
-        console.error('Error in getChatCompletion:', error.message);
+        console.error('Chat completion error:', error.response?.data || error.message);
         return {
             success: false,
             error: error.message || 'Unknown error occurred',
-            originalTemplate: templateText || 'No template provided',
-            spokenText: transcript || 'No transcript provided'
+            spokenText: transcript
         };
-    }
-}
-
-
-
-// Express route handler
-async function handleTranscriptionRequest(req, res) {
-    try {
-        const { transcript, templateText } = req.body;
-
-        console.log('Request body:', req.body); // Debug log
-
-        if (!transcript || !templateText) {
-            throw new Error('Missing required fields: transcript and/or templateText');
-        }
-
-        const result = await getChatCompletion(transcript, templateText);
-        res.json(result);
-
-    } catch (error) {
-        console.error('Error in handleTranscriptionRequest:', error);
-        res.status(400).json({
-            success: false,
-            error: error.message
-        });
     }
 }
 
 module.exports = {
-    handleRealtimeAudio,
-    processAudioFile,
     transcribeAudio,
-    getChatCompletion,
-    handleTranscriptionRequest
+    getChatCompletion
 };
