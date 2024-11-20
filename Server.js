@@ -9,7 +9,7 @@ const port = process.env.PORT || 8080;
 
 // CORS configuration
 app.use(cors({
-  origin: 'http://localhost:3000',
+  origin: '*',
   credentials: true
 }));
 
