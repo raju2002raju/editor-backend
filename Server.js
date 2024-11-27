@@ -38,7 +38,7 @@ const sendOtp = require('./Routes/otpVerification');
 const storeDocument = require('./Routes/storeDocument');
 const logout = require('./Routes/logout');
 const storeKey = require('./Routes/openAiKeyRoutes');
-
+const updatePrompts = require('./Routes/promptRoutes')
 // Use routes
 app.use('/api', transcriptionRoutes);
 app.use('/api', apiRoutes);
@@ -49,7 +49,7 @@ app.use('/api', sendOtp)
 app.use('/api', storeDocument)
 app.use('/api', logout);
 app.use('/api', storeKey);
-
+app.use('/api' , updatePrompts)
 // Serve static files
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 

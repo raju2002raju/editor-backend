@@ -3,7 +3,6 @@ const FormData = require('form-data');
 const fs = require('fs');
 const path = require('path');
 
-// Helper to load the API key from the JSON file or environment variable
 const getApiKey = () => {
     // Resolve the path relative to the current file
     const keyFilePath = path.resolve(__dirname, '../Routes/updatekey.json');
@@ -15,6 +14,23 @@ const getApiKey = () => {
         throw new Error('API key is missing .');
     }
     throw new Error(`API key file "${keyFilePath}" is missing or invalid.`);
+};
+
+const getPromptUpdate = () => {
+    const keyFilePath = path.resolve(__dirname, '../Routes/updateprompt.json');
+    if (fs.existsSync(keyFilePath)) {
+        const data = JSON.parse(fs.readFileSync(keyFilePath, 'utf-8'));
+        console.log('Prompt file path:', keyFilePath);
+        console.log('Prompt file contents:', data);
+        
+        // Check for 'prompt' instead of 'key'
+        if (data.prompt) {
+            console.log('Using prompt:', data.prompt);
+            return data.prompt;
+        }
+        throw new Error('Prompt is missing in the file.');
+    }
+    throw new Error(`Prompt file "${keyFilePath}" is missing or invalid.`);
 };
 
 
@@ -47,7 +63,6 @@ async function transcribeAudio(filePath) {
     try {
         console.log('Sending request to OpenAI Whisper API...');
         const apiKey = getApiKey(); // Fetch API key dynamically
-        console.log('api jey',apiKey )
         const response = await axios.post(
             'https://api.openai.com/v1/audio/transcriptions',
             formData,
@@ -76,22 +91,21 @@ async function transcribeAudio(filePath) {
 }
 
 
-async function getChatCompletion(transcript, templateText = '') {
+async function getChatCompletion(transcript = '') {
     try {
         if (!transcript) {
             throw new Error('Missing transcript');
         }
 
+          // Use a single, flexible prompt from environment variable
+          const promptTemplate = getPromptUpdate() || 
+          'You are a professional document assistant. Format the following text professionally.';
+          console.log('prompt' ,promptTemplate)
+
         const messages = [
             {
-                role: 'system',
-                content: `You are a legal document assistant. Your task is to format the following update in a clean, professional manner. 
-                         Return ONLY the formatted text without any additional commentary.
-                         ${templateText ? `Use this template as context: ${templateText}` : ''}`
-            },
-            {
                 role: 'user',
-                content: transcript.trim()
+                content: `${promptTemplate}\n\nTranscript to format:\n${transcript.trim()}`
             }
         ];
 
@@ -141,3 +155,4 @@ module.exports = {
     transcribeAudio,
     getChatCompletion
 };
+
