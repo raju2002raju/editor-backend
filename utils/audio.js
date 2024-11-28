@@ -90,63 +90,67 @@ async function transcribeAudio(filePath) {
     }
 }
 
-
-async function getChatCompletion(transcript = '') {
+async function getChatCompletion(transcript, templateText) {
     try {
-        if (!transcript) {
-            throw new Error('Missing transcript');
+        
+        if (!transcript || !templateText) {
+            throw new Error('Missing transcript or template text');
         }
 
-          // Use a single, flexible prompt from environment variable
-          const promptTemplate = getPromptUpdate() || 
-          'You are a professional document assistant. Format the following text professionally.';
-          console.log('prompt' ,promptTemplate)
-
+        console.log('Received:', transcript);
+        console.log('Template Text:', templateText);
+        const apiKey = getApiKey(); // Fetch API key dynamically
+        // Create messages for the API
         const messages = [
             {
+                role: 'system',
+                content: `You are a specialized text formatter that combines spoken numbers with templates.`
+            },
+            {
                 role: 'user',
-                content: `${promptTemplate}\n\nTranscript to format:\n${transcript.trim()}`
+                content: `Please update this template: "${templateText}" using this text: "${transcript}".`
             }
         ];
 
-        const apiKey = getApiKey(); // Fetch API key dynamically
         const response = await axios.post(
             'https://api.openai.com/v1/chat/completions',
             {
                 model: 'gpt-3.5-turbo',
-                messages,
-                temperature: 0.3,
-                max_tokens: 500,
-                top_p: 1,
-                frequency_penalty: 0,
-                presence_penalty: 0
+                messages: messages,
+                temperature: 0.1,
+                max_tokens: 100
             },
             {
                 headers: {
                     'Authorization': `Bearer ${apiKey}`,
                     'Content-Type': 'application/json'
-                },
-                timeout: 30000
+                }
             }
         );
 
-        const formattedText = response.data?.choices?.[0]?.message?.content?.trim();
-        if (!formattedText) {
-            throw new Error('Invalid response from OpenAI API');
+        console.log('OpenAI Response:', response.data); // Log the entire response for debugging
+
+        let correctedText = response.data.choices[0].message.content.trim();
+
+        // Basic validation
+        if (!correctedText) {
+            throw new Error('Empty response from API');
         }
 
         return {
             success: true,
+            originalTemplate: templateText,
             spokenText: transcript,
-            formattedText,
-            mergedText: formattedText
+            mergedText: correctedText
         };
+
     } catch (error) {
-        console.error('Chat completion error:', error.response?.data || error.message);
+        console.error('Error in getChatCompletion:', error.message);
         return {
             success: false,
             error: error.message || 'Unknown error occurred',
-            spokenText: transcript
+            originalTemplate: templateText || 'No template provided',
+            spokenText: transcript || 'No transcript provided'
         };
     }
 }
@@ -155,4 +159,3 @@ module.exports = {
     transcribeAudio,
     getChatCompletion
 };
-

@@ -61,15 +61,16 @@ router.post('/asr', upload.single('audio'), async (req, res) => {
         });
 
         // Handle template text if provided
-        const templateText = req.body.templateText || '';
-        console.log('Template text:', templateText);
+        const selectedText = req.body.selectedText || '';
+        console.log('Template text:', selectedText);
 
         // Transcribe audio
         const transcript = await transcribeAudio(file.path);
         console.log('Transcription result:', transcript);
 
         // Get chat completion
-        const chatResponse = await getChatCompletion(transcript, templateText);
+        const chatResponse = await getChatCompletion(transcript, selectedText);
+        console.log(selectedText)
         console.log('Chat completion result:', chatResponse);
 
         // Generate recording URL

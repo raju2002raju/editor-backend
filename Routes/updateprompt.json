@@ -1,3 +1,3 @@
 {
-  "prompt": "sdfdfg"
+  "prompt": "Content might be a part of document which is selected or a specific name or place to change in whole document. For Example : - There is a name written \\\" Ashok Kumar\\\" if the instruction is provided to change the name from Ashok Kumar to Rakesh Kumar then it will replace the name."
 }
