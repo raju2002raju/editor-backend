@@ -90,14 +90,76 @@ async function transcribeAudio(filePath) {
     }
 }
 
+// async function getChatCompletion(transcript, templateText = '') {
+//     try {
+//         const promptTemplate = getPromptUpdate();
+
+//         console.log('Received:', transcript);
+//         console.log('Template Text:', templateText);
+//         const apiKey = getApiKey(); 
+
+//         const messages = [
+//             {
+//                 role: 'system',
+//                 content: `You are a specialized text formatter that combines spoken numbers with templates. \n ${promptTemplate}`
+//             },
+//             {
+//                 role: 'user',
+//                 content: `Update this template: "${templateText}" using this text: "${transcript}". Return ONLY the updated template value without any quotes.`
+//             }
+//         ];
+
+//         const response = await axios.post(
+//             'https://api.openai.com/v1/chat/completions',
+//             {
+//                 model: 'gpt-4o',
+//                 messages: messages,
+//                 temperature: 0.1,
+//                 max_tokens: 4000
+//             },
+//             {
+//                 headers: {
+//                     'Authorization': `Bearer ${apiKey}`,
+//                     'Content-Type': 'application/json'
+//                 }
+//             }
+//         );
+
+//         console.log('OpenAI Response:', response.data);
+
+//         let correctedText = response.data.choices[0].message.content.trim();
+
+//         // Remove quotes if present
+//         correctedText = correctedText.replace(/^"|"$/g, '');
+
+//         if (!correctedText) {
+//             throw new Error('Empty response from API');
+//         }
+
+//         return {
+//             success: true,
+//             originalTemplate: templateText,
+//             spokenText: transcript,
+//             mergedText: correctedText
+//         };
+
+//     } catch (error) {
+//         console.error('Error in getChatCompletion:', error.message);
+//         return {
+//             success: false,
+//             error: error.message || 'Unknown error occurred',
+//             originalTemplate: templateText || 'No template provided',
+//             spokenText: transcript || 'No transcript provided'
+//         };
+//     }
+// }
+
 async function getChatCompletion(transcript, templateText = '') {
     try {
         const promptTemplate = getPromptUpdate();
-
         console.log('Received:', transcript);
         console.log('Template Text:', templateText);
         const apiKey = getApiKey(); 
-
         const messages = [
             {
                 role: 'system',
@@ -108,43 +170,45 @@ async function getChatCompletion(transcript, templateText = '') {
                 content: `Update this template: "${templateText}" using this text: "${transcript}". Return ONLY the updated template value without any quotes.`
             }
         ];
-
+        
         const response = await axios.post(
             'https://api.openai.com/v1/chat/completions',
             {
-                model: 'gpt-3.5-turbo',
+                model: 'gpt-4o',
                 messages: messages,
                 temperature: 0.1,
-                max_tokens: 100
+                max_tokens: 4000
             },
             {
                 headers: {
                     'Authorization': `Bearer ${apiKey}`,
                     'Content-Type': 'application/json'
-                }
+                },
+                timeout: 30000 // 30 seconds timeout
             }
         );
-
+        
         console.log('OpenAI Response:', response.data);
-
         let correctedText = response.data.choices[0].message.content.trim();
-
         // Remove quotes if present
         correctedText = correctedText.replace(/^"|"$/g, '');
-
         if (!correctedText) {
             throw new Error('Empty response from API');
         }
-
         return {
             success: true,
             originalTemplate: templateText,
             spokenText: transcript,
             mergedText: correctedText
         };
-
     } catch (error) {
-        console.error('Error in getChatCompletion:', error.message);
+        console.error('Error in getChatCompletion:', error);
+        
+        // More detailed error handling
+        if (error.code === 'ECONNABORTED') {
+            console.error('Request timed out');
+        }
+        
         return {
             success: false,
             error: error.message || 'Unknown error occurred',
