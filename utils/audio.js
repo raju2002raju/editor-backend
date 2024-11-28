@@ -90,25 +90,22 @@ async function transcribeAudio(filePath) {
     }
 }
 
-async function getChatCompletion(transcript, templateText) {
+async function getChatCompletion(transcript, templateText = '') {
     try {
-        
-        if (!transcript || !templateText) {
-            throw new Error('Missing transcript or template text');
-        }
+        const promptTemplate = getPromptUpdate();
 
         console.log('Received:', transcript);
         console.log('Template Text:', templateText);
-        const apiKey = getApiKey(); // Fetch API key dynamically
-        // Create messages for the API
+        const apiKey = getApiKey(); 
+
         const messages = [
             {
                 role: 'system',
-                content: `You are a specialized text formatter that combines spoken numbers with templates.`
+                content: `You are a specialized text formatter that combines spoken numbers with templates. \n ${promptTemplate}`
             },
             {
                 role: 'user',
-                content: `Please update this template: "${templateText}" using this text: "${transcript}".`
+                content: `Update this template: "${templateText}" using this text: "${transcript}". Return ONLY the updated template value without any quotes.`
             }
         ];
 
@@ -128,11 +125,13 @@ async function getChatCompletion(transcript, templateText) {
             }
         );
 
-        console.log('OpenAI Response:', response.data); // Log the entire response for debugging
+        console.log('OpenAI Response:', response.data);
 
         let correctedText = response.data.choices[0].message.content.trim();
 
-        // Basic validation
+        // Remove quotes if present
+        correctedText = correctedText.replace(/^"|"$/g, '');
+
         if (!correctedText) {
             throw new Error('Empty response from API');
         }
